@@ -1,0 +1,70 @@
+---
+title: "Marketing Analytics with R: Statistical Modeling"
+author: "Samantha Toet"
+date: "7/11/2018"
+output: html_document
+---
+
+These are the notes and practice exercises from the Data Camp Course [Marketing Analytics with R: Statistical Modeling](https://www.datacamp.com/courses/marketing-analytics-in-r-statistical-modeling?utm_source=blog&utm_medium=community&utm_campaign=course_6027)
+
+## Customer Lifetime Value (CLV)
+
+CLV is a prediction of the net profit attributed to the entire future relationship with a customer.
+
+Once the CLV has been calculated, you can use it for:
+
+- ID customers that are more likely to generate higher profits
+- target & prioritize customers according to future margins
+- no further customer segmentation
+
+Net profit = **Margin**
+
+Plot correlations using `corrplot` package (dark blue = r is closer to 1)
+
+### Simple Linear Regression:
+
+- only use one variable for the independent predictor 
+- least squares estimation finds regression line and returns coefficients
+- prediction error or residual value is the difference between a point and the line
+- specify linear regression model using a formula object in `lm` function:
+
+```{r, eval = FALSE, echo = TRUE}
+# predict futureMargin from margin and store that model in simpleLM
+simpleLM <- lm(futureMargin ~ margin, data = clvData1)  
+summary(simpleLM) # to get an overview of results 
+```
+
+Interpreting the results:
+
+- If **coefficient estimate** is > 0, the higher the margin in year 1, then the higher we expect the future margin to be
+- The **Multiple R Squared value** is the percentage of variation in the futureMargin that can be explained by the margin in year 1 
+- Can be visualized using `geom_point` and `geom_smooth`
+
+Requirements for Simple Linear Regression:
+
+- linear relationship b/w x and y
+- no measurement error in x (weak **exogeneity**)
+- independence of errors (residuals uncorrelated -should randomly vary around 0)
+- expectation of errors is 0
+- constant variance of prediction errors (**homoscedasticity**)
+- normality of errors (for significance testing)
+
+### Multiple Linear Regression
+
+**Omitted variable bias** is a threat to simple linear regression and occurs when a variable not included in the regression is correlated with both the explanatory variable and the response variable. For example, IQ may be considered an omitted variable when it comes to how study time relates to test performance. 
+
+**Multicollinearity** is a threat to multiple linear regression. It occurs whenever one explanatory variable can be explained by the remaining explanatory variables. It causes standard errors are underestimates. 
+
+- To check all variables in a model for multicollinearity, calculate the **variance inflation factors** using `rms::vif`
+- These resutls indicate the increate in the variance of an estimated coeffiecient due to multicollinearity 
+- VIF > 5 is problematic and VIF > 10 indicates poor regression estimates
+- Exclude one of each pair from the regression
+
+Interpretation of coefficients:
+
+- It's hard to make interpredations using just the intercept
+- The coefficient of each explanatory variable gives the effect that a one unit change in that variable has on the expected margin (with all other variables being held contstant)
+
+
+
+
