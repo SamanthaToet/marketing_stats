@@ -56,7 +56,7 @@ Requirements for Simple Linear Regression:
 **Multicollinearity** is a threat to multiple linear regression. It occurs whenever one explanatory variable can be explained by the remaining explanatory variables. It causes standard errors are underestimates. 
 
 - To check all variables in a model for multicollinearity, calculate the **variance inflation factors** using `rms::vif`
-- These resutls indicate the increate in the variance of an estimated coeffiecient due to multicollinearity 
+- An increate in the variance of an estimated coeffiecient due to multicollinearity 
 - VIF > 5 is problematic and VIF > 10 indicates poor regression estimates
 - Exclude one of each pair from the regression
 
@@ -64,6 +64,164 @@ Interpretation of coefficients:
 
 - It's hard to make interpredations using just the intercept
 - The coefficient of each explanatory variable gives the effect that a one unit change in that variable has on the expected margin (with all other variables being held contstant)
+
+### Model Valdiation, Model Fit, and Prediction
+
+Goodness of fit measueres are used to judge a model's fit. One of them is the **coefficient of determination** or multiple R squared, \( R^2 \) which provides the proportion of the dependent variable's variance that is explained by the regression model, adjusted for the number of variables in the model. 
+
+So if \(R^2\) is 0 none of the variation is explained (i.e. there is no trend in the model), and if \(R^2\) is 1 means that the model explains 100% of the dependent variable's variation.
+
+The **F-test** is a test for the overall fit of the model. It tests if \(R^2\) is 0, or if at least one regressor has significant explanatory power. If `p < o.o5` the hypothesis that \(R^2\) equals 0 is rejected. 
+
+The above are all in-sample measures, i.e. the model is evaluated on the same data it was fitted on, which bears the risk of **overfitting**. 
+
+Ways to avoid overfitting:
+
+- keep your model lean
+- `stats::AIC()` - compares two models and penalizes for every explanatory variable. When comparing 2 models, the AIC-minimizing model is preferred. 
+- `mass::stepAIC()` - automatic model selection 
+- out-of-sample model validation
+- cross validation
+
+Use `predict(model)` for making predictions. 
+
+
+# Churn Prevention with Logistic Regression
+
+Example: you want to predict the probability of a customer returing to your online shop. To do this, you use **binary logistic regression**. Let's look a little deeper:
+
+- The measure of interest is the probability of a customer churning, \(P(Y = 1)\), is difficult to model directly. If you use a linear model you can end up with probabilities outside the range of 0-1
+- Model the log odds:
+$$ log \frac{P(Y = 1)}{P(Y = 0)} = \beta_0 + \sum^P_{p = 1} \beta_p x_p $$
+- Removing the log by using the exponential function gives us the Odds, which is the probability to churn divided by the probability not to churn:
+$$ \frac{P(Y = 1)}{P(Y = 0)} = e^Z, Z = \beta_0 + \sum^P_{p = 1} \beta_px_p $$
+- The final model for the **probability of a customer churning** is below. It gives us the probability of the target variable being equal to 1. 
+$$ P(Y = 1) = \frac{e^Z}{1 + e^Z} $$
+
+### Modeling
+
+To estimate a logistic regression model, use `stats::glm()` and set `family = binomial`. The `summary()` output on your model gives you the estimated coefficients, standard errors, test statistics, and p values. Note that three stars indicate the coefficient is highly significant. The AIC value is also displayed.
+
+`glm()` stands for **generalized linear model** and offers a family of regression models. 
+
+Hypothesis testing: if the null hypothesis (H0) is correct, that means the variable does NOT have an influence on the return of a customer. 
+
+Interpretations of the coefficients is not straightforward. W/o transformation they only indicate the effects on the log odds (i.e. you can only draw conclusions about the direction of that effect). You'll need to extract coefficients using the `coef()` function and transform using the `exp()` function:
+
+```{r eval=FALSE}
+coefsExp <- coef(logitModeFull) %>% exp() %>% round(2)
+```
+
+To interpret the results, look at the explanatory variable value. If it's greater than 1, for example 1.69, then the results have increased one fold by 69%. 
+
+
+### Model Selection
+
+When building a model you have to figure out which vartiables to include. One useful tool is `MASS::stepAIC` where the full model is iteratively compares to several other models such that variables are dropped and added based on their significance. It stops when a min AIC is reached. 
+
+Questions to ask after looking at the results of a Step-AIC Function:
+
+- Are there any variables not included in the model that you would have expected to be?
+- Are there any variables included that don't make sense?
+
+### In-Sample Model Fit and Thresholding
+
+Measures of model fit use **Pseudo \(R^2\) Statistics** such as McFadden's, Cox & Snell's, and Negelkerke's formulas. For these statistics values greater than 0.2 classify a model as reasonable, greater than 0.4 as good, and greater than 0.5 as very good. 
+
+`descr::logRegR2()` gives multiple goodness of fit measures (inc. above)
+
+Another goodness of fit measure is **accuracy**, which puts the correct predictions in relation to the overall number of observations. First predict the probabilities by using `SDMTools::predict()` and setting `type = response`, and exclude observations with missing values by setting `na.action = na.exclue`. Then display the actual observed values and new predictions using `select()` and `tail()`.
+
+Now observations are classified according to a certain threshols and the predicted and observed outcomes are compared in a **confusion matrix**. Use `SDMTools::confusion.matrix()` with actual observed classes and predicted probabilities:
+
+```{r eval=FALSE}
+confMatrixNew <- confusion.matrix(chrunData$returnCustomer, #actual
+                                  churnData$predNew, #predicted
+                                  threshold = 0.5) #default
+```
+
+A classification is correct if it predicts an observation to be 0 where it's true value is 0 (true neg), or if it predicts an observation to be 1 where it's true value is 1 (true pos). In all other cases the prediction is wrong and the observations are misclassified. 
+
+Then check the accuracy of those results:
+
+```{r eval=FALSE}
+accuracyNew <- sum(diag(confMatrixNew)) / sum(confMatrixNew)
+```
+
+Be careful when interpreting this value. With a threshold of 0.5 there might be some errors. 
+
+### Thresholding
+
+Finding the optimal threshold. For example, if a customer returned based on our prediction, he was sent a coupon, the payoff (how much money you get or lose) is supposed to be 5. However if we wrongly classify someone as churning, whereas they would have returned anyways, leads to a payoff of -15. Predicting a return customer does not cause any direct costs. The payoff is dependent on the true positives and false negatives. Changing the threshold changes the payoff. While the accuracy decreases with a lower threshold, the opposite happens with payoff, reaching a max when threshold = 0. 
+
+**Payoff = x \(*\) true negative - y \(*\) false positive**
+
+Also:
+
+```{r eval=FALSE}
+payoffMatrix <- data.frame(threshold = seq(from = 0.1, to = 0.5, by = 0.1),
+                           payoff = NA) 
+payoffMatrix
+```
+
+### Out-of-Sample Validation 
+
+Used to avoid overfitting.
+
+Out-of-Sample Fit: Training and Testing Data
+
+1. Divide the dataset into testing and training data. The training set should make up 2/3rds of the data and testing into 1/3. The goodness of fit measures are calculated on the testing set. 
+
+```{r eval=FALSE}
+# set seed to ensure reprex
+set.seed(123456)
+
+churnData$isTrain <- rbinom(nrow(churnData), 1, 0.66)
+train <- subset(churnData, churnData$isTrain == 1)
+test <- subset(churnData, churnData$isTrain == 0)
+```
+
+2. Build a model based on training data. Then hand the coefficients of the model to the `predict` function to make predictions. By setting `type = "response"` we predict the probability of the person churning. 
+
+```{r eval=FALSE}
+# model logitTrainNew
+logitTrainNew <- glm(returnCustomer ~ title + newsletter + websiteDesign +
+                         paymentMethod + couponDiscount + purchaseValue + 
+                         throughAffiliate + shippingFees + dvd + blueray + vinyl + 
+                         videogames + prodRemitted, family = binomial, data = train)
+
+# out-of-sample prediction for logitTrainNew
+test$predNew <- predict(logitTrainNew, type = "response", newdata = test)
+```
+
+3. Verify and test the model witgh either out-of-sample accuracy or cross validation. To use out-of-sample accuracy:
+
+```{r eval=FALSE}
+#calculate the confusion matrix
+confMatrixNew <- confusion.matrix(test$returnCustomer, test$predNew, 
+                                  threshold = 0.3)
+confMatrixNew
+
+#calculate the accuracy
+accuracyNew <- sum(diag(confMatrixNew) / sum(confMatrixNew))
+accuracyNew
+```
+
+### Cross Validation 
+
+An even better tool for overfitting since it needs less data. 
+
+The four-fold cross validation procedure:
+
+1. Split your dataset randomly into 4 subsets. Three will be used for training and one for testing. The test data is used to calculate the model goodness of fit measures
+
+2. Then perform three repetitions, and each time a different subset is used as test data and the remaining three subsets as training data. 
+
+3. Finally you calculate the average goodness of fit measures across the four outputs. 
+
+# Modeling Time to Order with Survival Analysis
+
+
 
 
 
