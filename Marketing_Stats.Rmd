@@ -221,6 +221,22 @@ The four-fold cross validation procedure:
 
 # Modeling Time to Order with Survival Analysis
 
+**Survival analysis** allows us to model the time to an event, also called failure or survival time. 
+
+Advantages of using a survival model:
+
+- less aggregation (avoids loss of info due to aggregation)
+
+- allows us to model WHEN an event takes place and not just IF it will 
+
+- no arbitratily set timeframe 
+
+- deeper insights into customer relations
+
+**Censoring** is a special case of missing data. **Random type 1 right censoring** means that a subjects event can only be observed if it occurs before a certain point in time (EX. when predicting churn, it must have occured before the current point in time to be observed. We do know, however, that a person has not churned in a certain time frame). Censoring times can very between subjects. 
+
+There are two pieces of info needed for survival analysis: the **time under observation** and the **status at the end of this time**. According to the status we can conclude if an observation was censored or not. 
+
 
 
 
