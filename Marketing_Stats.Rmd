@@ -219,7 +219,7 @@ The four-fold cross validation procedure:
 
 3. Finally you calculate the average goodness of fit measures across the four outputs. 
 
-# Modeling Time to Order with Survival Analysis
+## Modeling Time to Order with Survival Analysis
 
 **Survival analysis** allows us to model the time to an event, also called failure or survival time. 
 
@@ -237,6 +237,80 @@ Advantages of using a survival model:
 
 There are two pieces of info needed for survival analysis: the **time under observation** and the **status at the end of this time**. According to the status we can conclude if an observation was censored or not. 
 
+### Survival Curve Analysis by Kaplan-Meier
+
+The first step is to create a new column that holds a survival object. This will be the dependent variable. To do this we select the relevent two variables (tenure and churn), and use `survival::Surv` to create the survial object and store that in the third column. 
+
+```{r eval=FALSE}
+cbind(dataSurv %>% select(tenure, churn),
+      surv = Surv(dataSurv$tenure, dataSurv$churn))
+```
+
+The measure of interest in a survival analysis is the **survival function**. This function gives the probability that a customer will not churn in the period leading up to time point, t. 
+
+The counterpart to the survival function is the **cumulative hazard function**, which describes the cumulative risk, or the probability that the customer will have churned, up until time, t. 
+
+The **hazard rate**, also called the force of mortality or instantaneous event rate, describes the risk that an event will occur in a small time interval around t, given that the event hasn't happened yet. 
+
+A part of survival analysis is concerned with its estimation. W/o censoring, the estimation of the survival function would be just the percentage of customers who haven't churned at each respective timepoint. The **Kaplan-Meier Estimator** takes into account the number of customers who have churned and the number at risk (customers who are still under contract and might churn). We use `survival::survfit` to estimate the survival function. The survival object is used as the dependent variable here. 
+
+```{r eval=FALSE}
+fitKM <- survfit(Surv(dataSurv$tenure, dataSurv$churn) ~ 1, # since we aren't looking at covariants ~ 1
+                 type = "kaplan-meier")
+fitKM$surv
+```
+
+The values of the survival function at diff time points are stored in the `surv` element. 
+
+If we print the survfit object (EX. `print(fitKM)`) we are able to then analyze the object given,
+
+- `n`: number of customers in the dataset
+
+- `events`: number of customers who churned under the time of observation 
+
+- `median`: the median survival time (as in 50% of cust. do not churn before they reach a tenure of `median` value). The median survival time is the time where a horizontal line at 0.5 intersects the survival curve. 
+
+Plotting the survfit object shows overview of function and it's confidence intervals. 
+
+If we want to use categorical covariates (EX. whether or not the customer has a partner), we would include it in creating the survfit object and run the same analyses:
+
+```{r eval=FALSE}
+fitKMstr <- survfit(Surv(tenure, churn) ~ Partner,
+                    data = dataSurv)
+print(fitKMstr)
+```
+
+Values of `NA` can mean that the value falls outside of the observational period  without covariates (i.e. outside of the upper and lower 0.95 confidence limits of the first model). This happens if only a few customers churned under the time of observation. 
+
+### Cox Proportional Hazards Model with Constant Covariates
+
+Model assumptions:
+
+- Model definition: \(\lambda(t|x) = \lambda(t) * exp(x'/\beta)\) The predictors are linearly and additively related to the log hazard, so our model follows this form (where \(\lambda\) is the hazard function). 
+
+- No shape of underlying hazard \(\lambda(t)\) assumed. 
+
+- The **proportional hazards function** says that the predictors are not allowed to interact with time. Hence the relative hazard function, \(exp(x'\beta\), must be constant over time. 
+
+Fitting a Survival Model:
+
+First we specify the units that time is measured in. Then for summary stats and predictions, we need to determine the distributions of the predictor variables using `rms::datadist`. 
+
+```{r, eval=FALSE}
+units(dataSurv$tenure) <- "Month"
+dd <- datadist(dataSurv)
+options(datadist = "dd") #accessible in global envi
+```
+
+Then we specify the model using `rms::cph`. This is a slight modification of `survival::coxph`. On the left hand side of the formula we want the survival object and on the right the variables are added. 
+
+```{r, eval=FALSE}
+fitCHP1 <- cph(Surv(tensure, churn) ~ gender + SeniorCitizen + Partner + Dependents + StreamMov + 
+                       PaperlessBilling + PayMeth + MonthlyCharges,
+               data = dataSurv,
+               x = TRUE, y = TRUE, surv = TRUE,
+               time.inc = 1)
+```
 
 
 
