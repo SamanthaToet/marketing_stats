@@ -312,7 +312,43 @@ fitCHP1 <- cph(Surv(tensure, churn) ~ gender + SeniorCitizen + Partner + Depende
                time.inc = 1)
 ```
 
+Printing the results gives descriptive stats, goodness of fit measures, and the coefficients and their significance. 
 
+Coefficients are stored in the element named coefficients of the fitted model and are interpreted similarly to a logistic regression. From the untransformed coefficient, we can only draw conclusions about the *direction* of the effect (i.e. positive or negative compared to others). 
 
+We transform the coefficients using the exponential function, ex. `exp(fitCPH1$coefficients)`. This value is called the **hazard ratio**. For example, if the transformed value of "Senior Citizens" was 1.23, then the hazard to churn increases by a factor of 1.23 (or 23%) for senior citizens compared to non-senior citizens. In this case 1.23 is called the hazard ratio. 
 
+For continuous covariates, a one-unit increase in one of these variables influences (decreases, in this example) the hazard of churning by a factor of the exponential value. For example, if the exponential value of "Monthly Charges" was 0.99, then a one unit increase in "Monthly Charges" decreases the hazard of churning by a factor of 0.99. 
 
+Use `rms::survplot` to visualize the predictor effects. This plots the survival probability depending on different levels of one variable while holding the other coefficients constant. 
+
+```{r eval=FALSE}
+survplot(fitCHP1, MonthlyCharges, label.curves = list(keys = 1:5))
+
+survplot(fitCHP1, Partner)
+```
+
+To visualize the hazard ratios of the coefficients: `plot(summary(fitCPH1)), log = TRUE`
+
+### Checking Model Assumptions and Making Predictions 
+
+To validate your proportional hazards assumption, use `survival::cox.zph` then print:
+
+```{r eval=FALSE}
+testCPH1 <- cox.zph(fitCHP1)
+print(testCPH1)
+```
+
+If the p-value of the test is < 0.05, then we can reject the hypothesis that the given variable meets the proportional hazards assumption. If a predictor violates the proportional hazard assumption (hence their effect changes over time). 
+
+Visualizing the estimates of the coefficient beta(t) dependent on time gives further insights. If the PH assumption holds, beta(t) is a horizontal line. 
+
+General remarks on tests:
+
+- The test provided by the `cox.zph` function is conservative and sensitive to the number of observations. 
+
+- A violation where the coefficient changes signs is worse than one where the coefficient varies between some positive values. 
+
+What if PH assumption is violated?
+
+- If the PH assumption is violated for a certain variable, a **stratified cox model** makes sense. This model allows the shape of the underlying hazard to vary for the diff levels of the variable. 
