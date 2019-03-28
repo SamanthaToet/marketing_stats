@@ -1,7 +1,7 @@
 ---
 title: "Marketing Analytics with R: Statistical Modeling"
 author: "Samantha Toet"
-date: "7/11/2018"
+date: "completed 3/28/2019"
 output: html_document
 ---
 
@@ -351,4 +351,213 @@ General remarks on tests:
 
 What if PH assumption is violated?
 
-- If the PH assumption is violated for a certain variable, a **stratified cox model** makes sense. This model allows the shape of the underlying hazard to vary for the diff levels of the variable. 
+- If the PH assumption is violated for a certain variable, a **stratified cox model** makes sense. This model allows the shape of the underlying hazard to vary for the diff levels of the variable. Categorical variables are added to the argument `stratum`, and continuous variables are classed first. The regression coefficients are modeled across the strata. For example:
+
+```{r eval=FALSE}
+fitCPH2 <- cph(Surv(tenure, churn) ~ MonthlyCharges +
+                       SeniorCitizen + Partner + Dependents +
+                       StreamMov + Contract,
+               stratum = "gender = Male",
+               data = dataSurv, x = TRUE, y = TRUE, surv = TRUE)
+```
+
+
+- Another solution is to model **time-dependent coefficients** by dividing the time under consideration into different periods for which we assume the coefficients to be constant. 
+
+To make sure that the model isn't **overfitted**, we validate the model using `rms::validate` to estimate the `R^2`. You can chose what fold you want to cross validate by setting the argument `method` to "crossvalidation" and the argument `B` to the number of folds you want (in the below example, it's 10):
+
+```{r eval=FALSE}
+validate(fitCHP1, 
+         method = "crossvalidation",
+         B = 10, pr = FALSE) #pr = F bc we don't want results printed after each cross val step
+```
+
+When analyzing the results of the above, the column `index.corrected` hold the `R^2` corrected for overfitting by cross validation. 
+
+Predictions in survival analysis are not straightforward. Use `rms::survest` to estimate the probability that a certain customer (a separate, smaller dataframe called `oneNewData`) has not churned until a specific timepoint specified by the `times` argument:
+
+```{r eval=FALSE}
+str(survest(fitCHP1, newdata = oneNewData, times = 3)) # 3 months
+```
+
+When looking at the results of the above, the estimated survival probability `surv` tells us that the probability that the customer will not churn in 3 months. 
+
+We can also estimate the survival curve for the new customer using `survfit`:
+
+```{r eval=FALSE}
+plot(survfit(fitCHP1,
+             newdata = oneNewData))
+```
+
+To predict the expected time until churn, we print the `survfit` object and look at the median value:
+
+```{r eval=FALSE}
+print(survfit(fitCHP1, 
+              newdata = oneNewData))
+```
+
+
+## Principal Component Analysis for CRM Data
+
+PCA helps reduce dimensionality, or the number of correlated variables in your dataset. 
+
+The first component is determined such that it covers as much of the observations' variance as possible. It is called **PC1** and is plotted on the x-axis.
+
+The second component, **PC2** is determined such that it covers as much as possible of the remining variance, and it's plotted on the y-axis. This continues for the 3rd, 4th, etc. In the end there are as many components as variables, but you chose a subset of them. 
+
+PCA helps to 
+
+- handle multicolinearity
+
+- create indices (by creating weighted averages) - just use PC1 as your index
+
+- visualize and understand high-dimensional data 
+
+PCA is an exploratory tool. It's not meant to test hypotheses about the structure of your data. 
+
+### PCA Data
+
+To get an overview of the correlation structure of the data, first compute and visualize the correlations of all variables with `cor` and `corrplot`:
+
+```{r, eval=FALSE}
+dataCustomers %>% cor() %>% corrplot()
+```
+
+Note that `cor` takes the whole dataset as input while `corrplot` takes the estimated correlations. Positive correlations are blue and negative are red/orange. 
+
+## PCA Computation
+
+Because PCA focuses on the variances of respective variables, variables with high variances are overrepresented in the resulting principal components. Differences in the measuring units also introduce a fake weight to the variables. This can be avoided by standardizing the variables using `scale` function which transforms them to having a mean of 0 and a variance of 1:
+
+```{r eval=FALSE}
+dataCustomers <- dataCustomer %>% scale() %>% as.data.frame()
+
+#Check variances of all variables:
+lapply(dataCustomers, var)
+```
+
+Once the variables have been standardized, compute the PCA with `stats::prcomp` which takes the entire dataset as input:
+
+```{r eval=FALSE}
+pcaCust <- prcomp(dataCustomers)
+
+str(pcaCust, give.attr = FALSE)
+```
+
+The result is a list with 5 elements. The first element, `sdev` holds the standard deviations of the extracted components. There will be as many components are there are variables, and the first component has the highest standard deviation. The standard deviations of the remaining components become smaller each time as each component covers less of the original variance of the data. 
+
+The variances of the components, the squared standard deviations, are called **eigenvalues**. They serve as a nice measure of the importance of the respective component (i.e. the higher the eigenvalue, the more important the component). 
+
+If we divide the eigenvalues by the number of components, we get the proportion of variance that this component explains. 
+
+The second element, `rotation`, of the `prcomp` object holds the **loadings** of the PCA. The loadings are the correlations between the original variables and the components and helps to interpret the components. 
+
+The components of a PCA can be considered as something like a weighted average. Customer-specific characteristics are  weighted according to the loadings they have on the respective component and summed up. 
+
+For an example, let's walk through calculating the value of the first component for the first customer in the dataset by hand. First we select the vector of the 1st customer's characteristics, then we multiply them with the vector containing the loadings on the first component from the `rotation` element. 
+
+```{r eval=FALSE}
+# Value on 1st component for 1st customer
+sum(dataCustomers[1, ] * pcaCust$rotation[ ,1])
+```
+
+The values for each customer and component are stored in the element named `x`. 
+
+### PCA Model Specification: Choosing the Right Number of Components
+
+There are multiple ways to select the right number of components. In general, it's best practices to use a combination of all of them. 
+
+#### 1. Set a minimum of the overall variance explained 
+
+One way to decide is to **set a minimum of the overall variance explained**. Extract this by using the `summary` function on the `prcomp` object:
+
+```{r eval=FALSE}
+# Proportion of variance explained:
+summary(pcaCust)
+```
+
+Look at the values for "Cumulative Proportion" and count the number of PCs (columns) where the value exceds your proportion threshold. In general, start with a proportion of about 70% (so count the number of columns with values > 0.70). 
+
+#### 2. Use the Kaiser-Guttman criterion 
+
+A second criterion is called the **Kaiser-Guttman criterion**. Here you only keep components with an eigenvalue larger than 1. 
+
+```{r eval=FALSE}
+pcaCust$sdev ^ 2
+```
+
+An eigenvalue smaller than 1 means that the component covers less variance than a single variable contributed, so as a result the component doesn't really help reduce dimensionality. 
+
+#### 3. Visualize with `stats::screeplot`
+
+The screeplot displays the variances (the eigenvalues) of all components in descending order. Look for the "elbow" and drop all the components to the right of it.
+
+```{r eval=FALSE}
+screeplot(pcaCust, type = "lines")
+box()
+abline(h = 1, lty = 2)
+```
+
+
+The `biplot` helps visualize how the variables and the components behave with respect to each other. The axes in the plot are made up from two principal components, in the `choices` argument. The arrows indicate the variables and the numbers indicate single observations. 
+
+```{r eval=FALSE}
+biplot(pcaCust, choices = 1:2, cex = 0.7)
+```
+
+When observing these plots, look where the observations are scattered - are they scattered mostly along x or y axis? 
+
+If an arrow is nearly parallel to a component, it means that this variable loads high on the respective component. 
+
+### Principal Components in a Regression Analysis
+
+Remember, we use `stats::lm` to estimate a linear regression. The dot to the right of the ~ includes all variables contained in the dataset in the model:
+
+```{r eval=FALSE}
+mod1 <- lm(customerSatis ~ ., dataCustomer) #new variable, customer satisfaction
+```
+
+Then we compute the variance inflation factors using `car::vif`:
+
+```{r eval=FALSE}
+vif(mod1)
+```
+
+When analyzing these results, look for values above 5 or 10, which indicates strong multicollinearlity and renders the regression estimates unstable. To solve for this, we'll need to use the selected principal components as regressors instead. 
+
+First construct a dataframe with customer satisfaction and the first 6 components:
+
+```{r eval=FALSE}
+# Create df with customer satisfaction and 1st 6 components (from PCA)
+dataCustComponents <- cbind(dataCustomers[, "customerSatis"],
+                            pcaCust$x[, 1:6]) %>%
+        as.data.frame()
+```
+
+Then compute the linear model with the principal components as explanatory variables:
+
+```{r eval=FALSE}
+mod2 <- lm(customerSatis ~ ., dataCustComponents)
+```
+
+Because the componenta are by construction completely uncorrelated, all variance inflation factors should equal one now (i.e. `vif(mod2)` gives a 1 for each PC).
+
+Extract the R^2 of the 1st and 2nd models:
+
+```{r eval=FALSE}
+summary(mod1)$adj.r.squared
+summary(mod2)$adj.r.squared
+```
+
+The interpretation of the regression coefficients is now less straightforward bc they refer to the components and not the original variables. First display the results of the model:
+
+```{r eval=FALSE}
+summary(mod2)
+```
+
+One method that is often confused with PCA is **factor analysis**. While both are used as dimension reduction techniques, factor analysis identifies theoretical, latend contstructs like intelligence. These factors cannot be measured directly, but manifest themselves in measurable variables (i.e. the factors influence the observed values of the variables). Correlations between the variables are attributed to the common factors. Variance which cannot be explained by the factors are seen as error variance and is unrelated to the latent construct. 
+
+Factor analysis is used for the development of questionnaires (EX. measuring certain personality traits).
+
+In PCA, it is not the components that influence the variables, but the other way around: the components are composed of the variables. Hence you analyse how the items can be compressed. The remaining, uncovered variance is not seen as error variance, but as systematic variance you don't cover with the selected components. 
+
